@@ -34,13 +34,26 @@ class ZEUSDataset(torch.utils.data.Dataset):
 
 
 class ZEUSDataModule(L.LightningDataModule):
-    def __init__(self, data_dir: str = "path/to/dir", batch_size: int = 32, test=False):
+    def __init__(self, data_dir, data_params, test=False):
         super().__init__()
         self.data_dir = data_dir
-        self.batch_size = batch_size
+        self.batch_size = data_params["batch_size"]
         self.inputs = ["Pointing", "Interf"]
         self.outputs = ["EspecH", "EspecL"]
         self.test = test
+
+        # interpolation / downsampling stuff
+        Lx = 2160
+        Ly = 3840
+
+        xx = Lx - data_params["crop"] * 2
+        self.nx = round(xx / data_params["x_downsample"])
+        self.ny = round(Ly / data_params["y_downsample"])
+        dx = xx / self.nx
+        dy = Ly / self.ny
+        x_interp = np.linspace(data_params["crop"] + dx / 2.0, Lx - data_params["crop"] - dx / 2.0, self.nx)
+        y_interp = np.linspace(dy / 2, Ly - dy / 2, self.ny)
+        self.interp_points = list(product(x_interp, y_interp))
 
     def setup(self, stage: str):
         all_dat = defaultdict(list)
@@ -48,7 +61,7 @@ class ZEUSDataModule(L.LightningDataModule):
         df = pd.read_excel("/pscratch/sd/a/archis/processed_TA3_Dollar.xlsx", index_col=0)
 
         if self.test:
-            cutoff = 850
+            cutoff = 1150
         else:
             cutoff = 350
 
@@ -79,18 +92,9 @@ class ZEUSDataModule(L.LightningDataModule):
                         all_dat[subdir].append(img)
 
                         if "espec" in subdir.casefold():
-                            xx = 2160 - 256 * 2
-                            dx = int(xx / 20)
-                            dy = int(3840 / 50)
-                            interp_points = list(
-                                product(
-                                    np.arange(256, 2160 - 256, xx / dx),
-                                    np.arange(3840 / dy / 2, 3840 - 3840 / dy / 2 + 1, 3840 / dy),
-                                )
-                            )
                             interpd = interpn(
-                                (np.arange(2160), np.arange(3840)), np.array(img), interp_points, method="linear"
-                            ).reshape(dx, dy)
+                                (np.arange(2160), np.arange(3840)), np.array(img), self.interp_points, method="linear"
+                            ).reshape(self.nx, self.ny)
                             all_dat[subdir + "-downsampled"].append(torch.from_numpy(interpd).to(torch.float32))
 
                     prompts = []
@@ -110,7 +114,7 @@ class ZEUSDataModule(L.LightningDataModule):
 
         all_inds = np.arange(len(all_dat["EspecL-downsampled"]))
         self.train_inds = rng.choice(all_inds, int(0.8 * len(all_rows)), replace=False)
-        self.val_inds = rng.choice(list(set(all_inds) - set(self.train_inds)), int(0.1 * len(all_rows)), replace=False)
+        self.val_inds = rng.choice(list(set(all_inds) - set(self.train_inds)), int(0.18 * len(all_rows)), replace=False)
         self.test_inds = list(set(all_inds) - set(self.train_inds) - set(self.val_inds))
 
         print(f"{len(self.train_inds)=}", f"{len(self.val_inds)=}", f"{len(self.test_inds)=}")
@@ -135,13 +139,13 @@ class ZEUSDataModule(L.LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size, collate_fn=collate_fn)  # , num_workers=64)
+        return DataLoader(self.train, batch_size=self.batch_size, collate_fn=collate_fn)
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size, collate_fn=collate_fn)  # , num_workers=16)
+        return DataLoader(self.val, batch_size=self.batch_size, collate_fn=collate_fn)
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=self.batch_size, collate_fn=collate_fn)  # , num_workers=16)
+        return DataLoader(self.test, batch_size=self.batch_size, collate_fn=collate_fn)
 
     def predict_dataloader(self):
-        return DataLoader(self.mnist_predict, batch_size=self.batch_size, collate_fn=collate_fn)
+        return DataLoader(self.val, batch_size=self.batch_size, collate_fn=collate_fn)
