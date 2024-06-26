@@ -11,7 +11,8 @@ data:
 
 model:
   num_channels: 16
-  emb_size: 2304
+  num_layers: 4
+  log_loss: False
 
 mlflow:
   experiment: zeus

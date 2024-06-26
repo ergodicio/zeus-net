@@ -32,11 +32,11 @@ def training_run(rid, cfg, log_dir):
     checkpoint = ModelCheckpoint(monitor="val-loss", save_top_k=1, mode="min")
     prediction_writer = CustomWriter(write_interval="epoch", output_dir=log_dir)
     trainer = L.Trainer(
-        # devices=[0, 1, 2, 3],
-        devices=1,
+        devices=[0, 1, 2, 3],
+        # devices=1,
         accelerator="gpu",
         logger=mlf_logger,
-        max_epochs=500,
+        max_epochs=2,
         callbacks=[early_stopping, checkpoint, prediction_writer],
         default_root_dir=os.path.join(os.environ["SCRATCH"], "lightning"),
     )
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     parsl = True
     if parsl:
-        setup_parsl("local", 4, max_blocks=3)
+        setup_parsl("gpu-debug", 4, max_blocks=1)
         training_run = python_app(training_run)
 
     bss = [4, 8, 16, 32]
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     alls = product(lrs, bss, num_channels)
 
     res, rids = [], []
-    for lr, bs, ncs in alls:
+    for lr, bs, ncs in list(alls)[:1]:
         with open("config.yaml", "r") as fi:
             cfg = yaml.safe_load(fi)
         cfg["fitter"]["learning_rate"] = lr

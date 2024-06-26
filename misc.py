@@ -1,5 +1,20 @@
-import mlflow, os, boto3, tempfile
+import mlflow, os, boto3, tempfile, flatdict
 from mlflow_export_import.run.export_run import RunExporter
+
+
+def log_params(cfg):
+    flattened_dict = dict(flatdict.FlatDict(cfg, delimiter="."))
+    num_entries = len(flattened_dict.keys())
+
+    if num_entries > 100:
+        num_batches = num_entries % 100
+        fl_list = list(flattened_dict.items())
+        for i in range(num_batches):
+            end_ind = min((i + 1) * 100, num_entries)
+            trunc_dict = {k: v for k, v in fl_list[i * 100 : end_ind]}
+            mlflow.log_params(trunc_dict)
+    else:
+        mlflow.log_params(flattened_dict)
 
 
 def upload_dir_to_s3(local_directory: str, bucket: str, destination: str, run_id: str, prefix="individual", step=0):
@@ -69,17 +84,24 @@ def setup_parsl(parsl_provider="local", num_gpus=4, max_blocks=3):
         )
 
         htex = HighThroughputExecutor(
-            available_accelerators=num_gpus,
+            available_accelerators=["0,1,2,3"],
             label="zeus",
             provider=this_provider(**provider_args),
             cpu_affinity="block",
         )
         print(f"{htex.workers_per_node=}")
 
-    elif parsl_provider == "gpu":
+    elif "gpu" in parsl_provider:
 
         this_provider = SlurmProvider
-        sched_args = ["#SBATCH -C gpu", "#SBATCH --qos=regular"]
+        sched_args = ["#SBATCH -C gpu", "#SBATCH --ntasks-per-node 4"]
+        if "debug" in parsl_provider:
+            sched_args += ["#SBATCH --qos=debug"]
+            walltime = "00:10:00"
+        else:
+            # sched_args = ["#SBATCH -C gpu", "#SBATCH --qos=regular", "#SBATCH --ntasks-per-node 4"]
+            sched_args += ["#SBATCH --qos=regular"]
+            walltime = "12:00:00"
         provider_args = dict(
             partition=None,
             account="m4490_g",
@@ -91,8 +113,8 @@ def setup_parsl(parsl_provider="local", num_gpus=4, max_blocks=3):
                     export BASE_TEMPDIR='/pscratch/sd/a/archis/tmp/'; \
                     export MLFLOW_TRACKING_URI='/pscratch/sd/a/archis/mlflow';\
                     export MLFLOW_EXPORT=True",
-            launcher=SrunLauncher(overrides="--gpus-per-node 4 -c 128"),
-            walltime="12:00:00",
+            launcher=SrunLauncher(overrides="--gpus-per-node 4 -c 32"),
+            walltime=walltime,
             cmd_timeout=120,
             nodes_per_block=1,
             # init_blocks=1,
@@ -100,7 +122,7 @@ def setup_parsl(parsl_provider="local", num_gpus=4, max_blocks=3):
         )
 
         htex = HighThroughputExecutor(
-            available_accelerators=4,
+            available_accelerators=["0,1,2,3"],
             label="zeus",
             provider=this_provider(**provider_args),
             cpu_affinity="block",

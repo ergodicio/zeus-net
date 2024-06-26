@@ -15,4 +15,4 @@ mlflow
 mlflow_export_import
 tabulate
 boto3
-parsl
+flatdict
