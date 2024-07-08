@@ -15,14 +15,13 @@ def training_run(rid):
         cfg = yaml.safe_load(fi)
 
     ZDM = ZEUSDataModule(
-        os.path.join("/pscratch/sd/a/archis", "TA3_Dollar_2023_backup"), data_params=cfg["data"], test=True
+        os.path.join("/pscratch/sd/a/archis", "TA3_Dollar_2023_backup"), data_params=cfg["data"], test=cfg["debug"]
     )
 
     cfg["model"] = cfg["model"] | {"nx": ZDM.nx, "ny": ZDM.ny}
 
     ZLM = ZEUSLightningModule(
         learning_rate=cfg["fitter"]["learning_rate"],
-        batch_size=cfg["data"]["batch_size"],
         model_params=cfg["model"],
         run_id=rid,
         log_dir=log_dir,
@@ -38,11 +37,11 @@ def training_run(rid):
     checkpoint = ModelCheckpoint(monitor="val-loss", save_top_k=1, mode="min")
     prediction_writer = CustomWriter(write_interval="epoch", output_dir=log_dir)
     trainer = L.Trainer(
-        # devices=[0, 1, 2, 3],
-        devices=1,
+        devices=[0, 1, 2, 3],
+        # devices=1,
         accelerator="gpu",
         logger=mlf_logger,
-        max_epochs=1000,
+        max_epochs=2 if cfg["debug"] else 1000,
         callbacks=[early_stopping, checkpoint, prediction_writer],
         default_root_dir=os.path.join(os.environ["SCRATCH"], "lightning"),
     )

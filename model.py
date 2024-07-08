@@ -65,7 +65,7 @@ class SpectrumDecoder(nn.Module):
 
 
 class ZEUSElectronSpectrumator(nn.Module):
-    def __init__(self, inputs, outputs, batch_size, model_params):
+    def __init__(self, inputs, outputs, model_params):
         super(ZEUSElectronSpectrumator, self).__init__()
         self.vit_encoder = SentenceTransformer("clip-ViT-L-14")
         self.vit_encoder.requires_grad_(False)
@@ -75,7 +75,6 @@ class ZEUSElectronSpectrumator(nn.Module):
 
         self.input_names = inputs
         self.output_names = outputs
-        self.batch_size = batch_size
 
     def forward(self, input_dict):
 
@@ -113,13 +112,13 @@ class ZEUSElectronSpectrumator(nn.Module):
 
 # define the LightningModule
 class ZEUSLightningModule(L.LightningModule):
-    def __init__(self, learning_rate, batch_size, model_params, run_id, log_dir):
+    def __init__(self, learning_rate, model_params, run_id, log_dir):
         super().__init__()
         self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.inputs = ["Pointing", "Interf"]
         self.outputs = ["EspecH-downsampled", "EspecL-downsampled"]
-        self.zeus = ZEUSElectronSpectrumator(self.inputs, self.outputs, batch_size, model_params).to("cuda")
+        self.zeus = ZEUSElectronSpectrumator(self.inputs, self.outputs, model_params).to("cuda")
         self.espech_preds = []
         self.especl_preds = []
         self.espech_actuals = []
@@ -218,10 +217,13 @@ class CustomWriter(BasePredictionWriter):
                 [batch["espech-actual"], batch["especl-actual"]],
                 [samps_in_batch, samps_in_batch],
             ):
-                os.makedirs(figdir := os.path.join(self.output_dir, "plots", "final", nm), exist_ok=True)
+                os.makedirs(
+                    figdir := os.path.join(self.output_dir, "plots", "final", f"rank-{trainer.global_rank}", nm),
+                    exist_ok=True,
+                )
 
                 for j, (_samp, pred, actual) in enumerate(zip(_samps_in_batch, preds, actuals)):
-                    figpath = os.path.join(figdir, f"{nm}-{_samp}.png")
+                    figpath = os.path.join(figdir, f"{nm}-{j}.png")
                     ax = fig.add_subplot(1, 2, 1)
                     cb = ax.contourf(pred.cpu().detach().numpy())
                     ax.set_title("Predicted", fontsize=14)

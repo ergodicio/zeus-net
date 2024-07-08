@@ -1,12 +1,14 @@
+debug: False
+
 
 fitter:
   learning_rate: 0.001
 
 data:
   crop: 256
-  x_downsample: 20 # nx = (2160 - 512) / x_downsample
-  y_downsample: 50 # ny = 3840 / y_downsample
-  batch_size: 32
+  x_downsample: 10 # nx = (2160 - 512) / x_downsample
+  y_downsample: 40 # ny = 3840 / y_downsample
+  batch_size: 4
 
 
 model:

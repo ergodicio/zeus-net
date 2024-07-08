@@ -18,3 +18,4 @@ source /pscratch/sd/a/archis/venvs/zeus-gpu/bin/activate
 module load cudnn/8.9.3_cuda12.lua
 
 cd /global/u2/a/archis/zeus/
+srun python train_ta3_model.py --run_id 8b141be223d54d6484c73e2ff7c363c1
